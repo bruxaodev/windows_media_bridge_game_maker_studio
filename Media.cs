@@ -1,5 +1,6 @@
 using System;
 using System.Runtime.InteropServices;
+using Windows.Media;
 using Windows.Media.Control;
 using Windows.Storage.Streams;
 using System.Text.Json;
@@ -7,13 +8,46 @@ using System.Text.Json.Serialization;
 
 public static class Media
 {
+    [UnmanagedCallersOnly(EntryPoint = "media_get_timeline_json")]
+    public static IntPtr GetTimeline()
+    {
+        try
+        {
+            var session = GetCurrentSession();
+            if (session == null)
+                return StringToPtr("{\"ok\":false,\"error\":\"no_session\"}");
+
+            var timeline = session.GetTimelineProperties();
+            var result = new MediaTimelineResponse
+            {
+                Ok = true,
+                Timeline = new MediaTimelineResult
+                {
+                    StartTimeMs = timeline.StartTime.TotalMilliseconds,
+                    EndTimeMs = timeline.EndTime.TotalMilliseconds,
+                    MinSeekTimeMs = timeline.MinSeekTime.TotalMilliseconds,
+                    MaxSeekTimeMs = timeline.MaxSeekTime.TotalMilliseconds,
+                    PositionMs = timeline.Position.TotalMilliseconds,
+                    LastUpdatedTime = timeline.LastUpdatedTime.ToString("O")
+                }
+            };
+
+            string json = JsonSerializer.Serialize(result, MediaJsonContext.Default.MediaTimelineResponse);
+            return StringToPtr(json);
+        }
+        catch (Exception e)
+        {
+            string err = Escape(e.Message);
+            return StringToPtr("{\"ok\":false,\"error\":\"" + err + "\"}");
+        }
+    }
+
     [UnmanagedCallersOnly(EntryPoint = "media_get_current_json")]
     public static IntPtr GetCurrent()
     {
         try
         {
-            var manager = GlobalSystemMediaTransportControlsSessionManager.RequestAsync().AsTask().Result;
-            var session = manager.GetCurrentSession();
+            var session = GetCurrentSession();
 
             if (session == null)
                 return StringToPtr("{\"ok\":false,\"error\":\"no_session\"}");
@@ -91,53 +125,125 @@ public static class Media
     [UnmanagedCallersOnly(EntryPoint = "media_pause")]
     public static int Pause()
     {
-        try
-        {
-            var manager = GlobalSystemMediaTransportControlsSessionManager.RequestAsync().AsTask().Result;
-            var session = manager.GetCurrentSession();
-            if (session == null) return 0;
+        return TryControl(session => session.TryPauseAsync().AsTask().Result);
+    }
 
-            var playback = session.GetPlaybackInfo();
+    [UnmanagedCallersOnly(EntryPoint = "media_play")]
+    public static int Play()
+    {
+        return TryControl(session => session.TryPlayAsync().AsTask().Result);
+    }
 
-            bool success = playback.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing
-                ? session.TryPauseAsync().AsTask().Result
-                : session.TryPlayAsync().AsTask().Result;
+    [UnmanagedCallersOnly(EntryPoint = "media_toggle_play_pause")]
+    public static int TogglePlayPause()
+    {
+        return TogglePlayPauseCore();
+    }
 
-            return success ? 1 : 0;
-        }
-        catch
-        {
-            return 0;
-        }
+    [UnmanagedCallersOnly(EntryPoint = "media_play_pause")]
+    public static int PlayPause()
+    {
+        return TogglePlayPauseCore();
     }
 
     [UnmanagedCallersOnly(EntryPoint = "media_next")]
     public static int Next()
     {
-        try
-        {
-            var manager = GlobalSystemMediaTransportControlsSessionManager.RequestAsync().AsTask().Result;
-            var session = manager.GetCurrentSession();
-            if (session == null) return 0;
-
-            return session.TrySkipNextAsync().AsTask().Result ? 1 : 0;
-        }
-        catch
-        {
-            return 0;
-        }
+        return TryControl(session => session.TrySkipNextAsync().AsTask().Result);
     }
 
     [UnmanagedCallersOnly(EntryPoint = "media_prev")]
     public static int Prev()
     {
+        return TryControl(session => session.TrySkipPreviousAsync().AsTask().Result);
+    }
+
+    [UnmanagedCallersOnly(EntryPoint = "media_stop")]
+    public static int Stop()
+    {
+        return TryControl(session => session.TryStopAsync().AsTask().Result);
+    }
+
+    [UnmanagedCallersOnly(EntryPoint = "media_fast_forward")]
+    public static int FastForward()
+    {
+        return TryControl(session => session.TryFastForwardAsync().AsTask().Result);
+    }
+
+    [UnmanagedCallersOnly(EntryPoint = "media_rewind")]
+    public static int Rewind()
+    {
+        return TryControl(session => session.TryRewindAsync().AsTask().Result);
+    }
+
+    [UnmanagedCallersOnly(EntryPoint = "media_record")]
+    public static int Record()
+    {
+        return TryControl(session => session.TryRecordAsync().AsTask().Result);
+    }
+
+    [UnmanagedCallersOnly(EntryPoint = "media_channel_up")]
+    public static int ChannelUp()
+    {
+        return TryControl(session => session.TryChangeChannelUpAsync().AsTask().Result);
+    }
+
+    [UnmanagedCallersOnly(EntryPoint = "media_channel_down")]
+    public static int ChannelDown()
+    {
+        return TryControl(session => session.TryChangeChannelDownAsync().AsTask().Result);
+    }
+
+    [UnmanagedCallersOnly(EntryPoint = "media_change_shuffle_active")]
+    public static int ChangeShuffleActive(double active)
+    {
+        return TryControl(session => session.TryChangeShuffleActiveAsync(active != 0).AsTask().Result);
+    }
+
+    [UnmanagedCallersOnly(EntryPoint = "media_change_playback_rate")]
+    public static int ChangePlaybackRate(double rate)
+    {
+        return TryControl(session => session.TryChangePlaybackRateAsync(rate).AsTask().Result);
+    }
+
+    [UnmanagedCallersOnly(EntryPoint = "media_change_playback_position")]
+    public static int ChangePlaybackPosition(double positionMs)
+    {
+        long ticks = TimeSpan.FromMilliseconds(positionMs).Ticks;
+        return TryControl(session => session.TryChangePlaybackPositionAsync(ticks).AsTask().Result);
+    }
+
+    [UnmanagedCallersOnly(EntryPoint = "media_change_auto_repeat_mode")]
+    public static int ChangeAutoRepeatMode(double mode)
+    {
+        int modeValue = (int)mode;
+        if (!Enum.IsDefined(typeof(MediaPlaybackAutoRepeatMode), modeValue))
+            return 0;
+
+        var repeatMode = (MediaPlaybackAutoRepeatMode)modeValue;
+        return TryControl(session => session.TryChangeAutoRepeatModeAsync(repeatMode).AsTask().Result);
+    }
+
+    private static GlobalSystemMediaTransportControlsSession? GetCurrentSession()
+    {
+        var manager = GlobalSystemMediaTransportControlsSessionManager.RequestAsync().AsTask().Result;
+        return manager.GetCurrentSession();
+    }
+
+    private static int TogglePlayPauseCore()
+    {
+        return TryControl(session => session.TryTogglePlayPauseAsync().AsTask().Result);
+    }
+
+    private static int TryControl(Func<GlobalSystemMediaTransportControlsSession, bool> action)
+    {
         try
         {
-            var manager = GlobalSystemMediaTransportControlsSessionManager.RequestAsync().AsTask().Result;
-            var session = manager.GetCurrentSession();
-            if (session == null) return 0;
+            var session = GetCurrentSession();
+            if (session == null)
+                return 0;
 
-            return session.TrySkipPreviousAsync().AsTask().Result ? 1 : 0;
+            return action(session) ? 1 : 0;
         }
         catch
         {
@@ -237,6 +343,36 @@ internal sealed class MediaPlaybackResult
     public MediaControlResult Controls { get; set; } = new();
 }
 
+internal sealed class MediaTimelineResponse
+{
+    [JsonPropertyName("ok")]
+    public bool Ok { get; set; }
+
+    [JsonPropertyName("timeline")]
+    public MediaTimelineResult Timeline { get; set; } = new();
+}
+
+internal sealed class MediaTimelineResult
+{
+    [JsonPropertyName("startTimeMs")]
+    public double StartTimeMs { get; set; }
+
+    [JsonPropertyName("endTimeMs")]
+    public double EndTimeMs { get; set; }
+
+    [JsonPropertyName("minSeekTimeMs")]
+    public double MinSeekTimeMs { get; set; }
+
+    [JsonPropertyName("maxSeekTimeMs")]
+    public double MaxSeekTimeMs { get; set; }
+
+    [JsonPropertyName("positionMs")]
+    public double PositionMs { get; set; }
+
+    [JsonPropertyName("lastUpdatedTime")]
+    public string LastUpdatedTime { get; set; } = "";
+}
+
 internal sealed class MediaControlResult
 {
     [JsonPropertyName("isChannelDownEnabled")]
@@ -284,6 +420,7 @@ internal sealed class MediaControlResult
 
 [JsonSourceGenerationOptions(WriteIndented = true)]
 [JsonSerializable(typeof(MediaCurrentResult))]
+[JsonSerializable(typeof(MediaTimelineResponse))]
 internal partial class MediaJsonContext : JsonSerializerContext
 {
 }
