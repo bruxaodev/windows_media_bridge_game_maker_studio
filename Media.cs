@@ -98,8 +98,8 @@ public static class Media
             var playbackResult = new MediaPlaybackResult
             {
                 Status = Escape(playback.PlaybackStatus.ToString()),
-                // Type = Escape(playback.PlaybackType.GetValueOrDefault().ToString()),
-                // AutoRepeatMode = Escape(playback.AutoRepeatMode.GetValueOrDefault().ToString()),
+                Type = Escape(playback.PlaybackType.GetValueOrDefault().ToString()),
+                AutoRepeatMode = Escape(playback.AutoRepeatMode.GetValueOrDefault().ToString()),
                 Controls = controls
             };
 
@@ -333,11 +333,11 @@ internal sealed class MediaPlaybackResult
     [JsonPropertyName("status")]
     public string Status { get; set; } = "";
 
-    // [JsonPropertyName("type")]
-    // public string Type { get; set; } = "";
+    [JsonPropertyName("type")]
+    public string Type { get; set; } = "";
 
-    // [JsonPropertyName("autoRepeatMode")]
-    // public string AutoRepeatMode { get; set; } = "";
+    [JsonPropertyName("autoRepeatMode")]
+    public string AutoRepeatMode { get; set; } = "";
 
     [JsonPropertyName("controls")]
     public MediaControlResult Controls { get; set; } = new();
