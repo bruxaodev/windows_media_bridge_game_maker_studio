@@ -2,6 +2,8 @@ using System;
 using System.Runtime.InteropServices;
 using Windows.Media.Control;
 using Windows.Storage.Streams;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 public static class Media
 {
@@ -17,27 +19,64 @@ public static class Media
                 return StringToPtr("{\"ok\":false,\"error\":\"no_session\"}");
 
             var media = session.TryGetMediaPropertiesAsync().AsTask().Result;
-
             var playback = session.GetPlaybackInfo();
 
             string thumb = Escape(ReadThumbnailDataUrl(media.Thumbnail));
 
             string title = Escape(media.Title ?? "");
+            string subTitle = Escape(media.Subtitle ?? "");
             string artist = Escape(media.Artist ?? "");
             string album = Escape(media.AlbumTitle ?? "");
             string source = Escape(session.SourceAppUserModelId ?? "");
-            string status = Escape(playback.PlaybackStatus.ToString());
+            int albumCount = media.AlbumTrackCount;
+            int trackNumber = media.TrackNumber;
 
-            string json =
-                "{"
-                + "\"ok\":true,"
-                + "\"title\":\"" + title + "\","
-                + "\"artist\":\"" + artist + "\","
-                + "\"album\":\"" + album + "\","
-                + "\"source\":\"" + source + "\","
-                + "\"status\":\"" + status + "\","
-                + "\"thumbnail\":\"" + thumb + "\""
-                + "}";
+            var mediaResult = new MediaDataResult
+            {
+                Title = title,
+                SubTitle = subTitle,
+                Artist = artist,
+                Album = album,
+                Source = source,
+                Thumbnail = thumb,
+                AlbumCount = albumCount,
+                TrackNumber = trackNumber
+            };
+
+            var controls = new MediaControlResult
+            {
+                IsChannelDownEnabled = playback.Controls.IsChannelDownEnabled,
+                IsChannelUpEnabled = playback.Controls.IsChannelUpEnabled,
+                IsFastForwardEnabled = playback.Controls.IsFastForwardEnabled,
+                IsNextEnabled = playback.Controls.IsNextEnabled,
+                IsPauseEnabled = playback.Controls.IsPauseEnabled,
+                IsPlayEnabled = playback.Controls.IsPlayEnabled,
+                IsPlaybackPositionEnabled = playback.Controls.IsPlaybackPositionEnabled,
+                IsPlaybackRateEnabled = playback.Controls.IsPlaybackRateEnabled,
+                IsPreviousEnabled = playback.Controls.IsPreviousEnabled,
+                IsRecordEnabled = playback.Controls.IsRecordEnabled,
+                IsRepeatEnabled = playback.Controls.IsRepeatEnabled,
+                IsRewindEnabled = playback.Controls.IsRewindEnabled,
+                IsShuffleEnabled = playback.Controls.IsShuffleEnabled,
+                IsStopEnabled = playback.Controls.IsStopEnabled
+            };
+
+            var playbackResult = new MediaPlaybackResult
+            {
+                Status = Escape(playback.PlaybackStatus.ToString()),
+                // Type = Escape(playback.PlaybackType.GetValueOrDefault().ToString()),
+                // AutoRepeatMode = Escape(playback.AutoRepeatMode.GetValueOrDefault().ToString()),
+                Controls = controls
+            };
+
+            var result = new MediaCurrentResult
+            {
+                Ok = true,
+                Media = mediaResult,
+                Playback = playbackResult
+            };
+
+            string json = JsonSerializer.Serialize(result, MediaJsonContext.Default.MediaCurrentResult);
 
             return StringToPtr(json);
         }
@@ -142,4 +181,109 @@ public static class Media
     {
         return Marshal.StringToHGlobalAnsi(str);
     }
+}
+
+internal sealed class MediaCurrentResult
+{
+    [JsonPropertyName("ok")]
+    public bool Ok { get; set; }
+
+    [JsonPropertyName("media")]
+    public MediaDataResult Media { get; set; } = new();
+
+    [JsonPropertyName("playback")]
+    public MediaPlaybackResult Playback { get; set; } = new();
+}
+
+internal sealed class MediaDataResult
+{
+    [JsonPropertyName("title")]
+    public string Title { get; set; } = "";
+
+    [JsonPropertyName("subTitle")]
+    public string SubTitle { get; set; } = "";
+
+    [JsonPropertyName("artist")]
+    public string Artist { get; set; } = "";
+
+    [JsonPropertyName("album")]
+    public string Album { get; set; } = "";
+
+    [JsonPropertyName("source")]
+    public string Source { get; set; } = "";
+
+    [JsonPropertyName("thumbnail")]
+    public string Thumbnail { get; set; } = "";
+
+    [JsonPropertyName("albumCount")]
+    public int AlbumCount { get; set; }
+
+    [JsonPropertyName("trackNumber")]
+    public int TrackNumber { get; set; }
+}
+
+internal sealed class MediaPlaybackResult
+{
+    [JsonPropertyName("status")]
+    public string Status { get; set; } = "";
+
+    // [JsonPropertyName("type")]
+    // public string Type { get; set; } = "";
+
+    // [JsonPropertyName("autoRepeatMode")]
+    // public string AutoRepeatMode { get; set; } = "";
+
+    [JsonPropertyName("controls")]
+    public MediaControlResult Controls { get; set; } = new();
+}
+
+internal sealed class MediaControlResult
+{
+    [JsonPropertyName("isChannelDownEnabled")]
+    public bool IsChannelDownEnabled { get; set; }
+
+    [JsonPropertyName("isChannelUpEnabled")]
+    public bool IsChannelUpEnabled { get; set; }
+
+    [JsonPropertyName("isFastForwardEnabled")]
+    public bool IsFastForwardEnabled { get; set; }
+
+    [JsonPropertyName("isNextEnabled")]
+    public bool IsNextEnabled { get; set; }
+
+    [JsonPropertyName("isPauseEnabled")]
+    public bool IsPauseEnabled { get; set; }
+
+    [JsonPropertyName("isPlayEnabled")]
+    public bool IsPlayEnabled { get; set; }
+
+    [JsonPropertyName("isPlaybackPositionEnabled")]
+    public bool IsPlaybackPositionEnabled { get; set; }
+
+    [JsonPropertyName("isPlaybackRateEnabled")]
+    public bool IsPlaybackRateEnabled { get; set; }
+
+    [JsonPropertyName("isPreviousEnabled")]
+    public bool IsPreviousEnabled { get; set; }
+
+    [JsonPropertyName("isRecordEnabled")]
+    public bool IsRecordEnabled { get; set; }
+
+    [JsonPropertyName("isRepeatEnabled")]
+    public bool IsRepeatEnabled { get; set; }
+
+    [JsonPropertyName("isRewindEnabled")]
+    public bool IsRewindEnabled { get; set; }
+
+    [JsonPropertyName("isShuffleEnabled")]
+    public bool IsShuffleEnabled { get; set; }
+
+    [JsonPropertyName("isStopEnabled")]
+    public bool IsStopEnabled { get; set; }
+}
+
+[JsonSourceGenerationOptions(WriteIndented = true)]
+[JsonSerializable(typeof(MediaCurrentResult))]
+internal partial class MediaJsonContext : JsonSerializerContext
+{
 }
